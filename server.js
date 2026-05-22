@@ -9,6 +9,8 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { initDb, hasSigned, saveSignature, getAllForAudit, getSignature } = require('./lib/db');
 const { generateUnsignedPDF, generateSignedPDF, computeHash } = require('./lib/pdf');
+const { renderContractHtml } = require('./lib/contract-html');
+const { blocks } = require('./lib/contract');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -73,6 +75,12 @@ app.get('/api/status', (req, res) => {
     sara: { signed: saraSigned, signed_at: saraSig?.signed_at || null },
     both_signed: evelynSigned && saraSigned,
   });
+});
+
+// ── Contract HTML ─────────────────────────────────────────────────────────────
+app.get('/api/contract-html', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(renderContractHtml(blocks));
 });
 
 // ── Preview ──────────────────────────────────────────────────────────────────

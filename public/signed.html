@@ -6,14 +6,12 @@
   <title>Signert – Konsulentavtale</title>
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-<div class="container">
-  <div class="card">
-    <div class="success-icon">✓</div>
-    <h1 id="heading">Takk!</h1>
-    <div id="message"></div>
-    <div id="actions" style="margin-top:1.5rem;"></div>
-  </div>
+<body class="signed-page">
+<div class="signed-card">
+  <div class="signed-icon" id="icon">✓</div>
+  <h1 id="heading">Takk!</h1>
+  <div id="message"></div>
+  <div class="signed-actions" id="actions"></div>
 </div>
 
 <script>
@@ -27,25 +25,38 @@ async function init() {
     return;
   }
   const data = await res.json();
-  const ts = new Date(data.signed_at).toLocaleString('no-NO');
+  const ts = new Date(data.signed_at).toLocaleString('no-NO', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
   const msgDiv = document.getElementById('message');
   const actionsDiv = document.getElementById('actions');
 
   if (party === 'evelyn') {
+    document.getElementById('heading').textContent = 'Signatur registrert!';
     msgDiv.innerHTML = `
-      <div class="note">Signaturen din ble registrert ${ts}.</div>
-      <p style="margin-top:1rem;">Sara får beskjed når avtalen er klar for hennes signatur.</p>
+      <div class="signed-note">Signaturen din ble registrert ${ts}.</div>
+      <p>Sara vil bli kontaktet når avtalen er klar for hennes signatur.</p>
     `;
-    actionsDiv.innerHTML = `<a class="btn btn-secondary" href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>`;
+    actionsDiv.innerHTML = `<a class="btn-preview" href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>`;
   } else {
     if (data.both_signed) {
+      document.getElementById('heading').textContent = 'Kontrakten er fullt signert!';
+      document.getElementById('icon').textContent = '🎉';
       msgDiv.innerHTML = `
-        <div class="note">Kontrakten er nå fullt signert av begge parter (${ts}).</div>
+        <div class="signed-note">Begge parter har signert. Avtalen er bindende fra ${ts}.</div>
       `;
-      actionsDiv.innerHTML = `<a class="btn btn-primary" href="/download">Last ned signert kontrakt (PDF)</a>`;
+      actionsDiv.innerHTML = `
+        <a class="btn-download" href="/download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Last ned signert kontrakt (PDF)
+        </a>
+        <a class="btn-preview" href="/preview" target="_blank">Se forhåndsvisning</a>
+      `;
     } else {
-      msgDiv.innerHTML = `<div class="note">Signaturen din ble registrert ${ts}.</div>`;
+      document.getElementById('heading').textContent = 'Signatur registrert!';
+      msgDiv.innerHTML = `<div class="signed-note">Signaturen din ble registrert ${ts}.</div>`;
     }
   }
 }
