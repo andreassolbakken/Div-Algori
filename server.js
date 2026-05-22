@@ -7,7 +7,7 @@ const helmet = require('helmet');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const { hasSigned, saveSignature, getAllForAudit, getSignature } = require('./lib/db');
+const { initDb, hasSigned, saveSignature, getAllForAudit, getSignature } = require('./lib/db');
 const { generateUnsignedPDF, generateSignedPDF, computeHash } = require('./lib/pdf');
 
 const app = express();
@@ -224,8 +224,13 @@ app.use((req, res) => {
   res.status(404).send('Ikke funnet.');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server kjører på port ${PORT}`);
+initDb().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server kjører på port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('DB init failed:', err);
+  process.exit(1);
 });
 
 module.exports = app;
