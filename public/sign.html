@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signer konsulentavtale</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="card" id="main-card">
+    <h1>Signer konsulentavtale</h1>
+    <p id="subtitle" style="margin-bottom:1.2rem;color:#555;font-size:1.05rem;"></p>
+    <div id="content-area"><p>Laster...</p></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/signature_pad@4/dist/signature_pad.umd.min.js"></script>
+<script>
+const pathParts = window.location.pathname.split('/');
+const party = pathParts[pathParts.length - 1];
+const token = new URLSearchParams(window.location.search).get('token') || '';
+
+let signaturePad;
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function init() {
+  let data;
+  try {
+    const res = await fetch(`/api/sign-info/${party}?token=${encodeURIComponent(token)}`);
+    data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'error');
+  } catch (e) {
+    showError('Ugyldig eller utløpt lenke.');
+    return;
+  }
+
+  if (data.error === 'evelyn_must_sign_first') {
+    showError('Evelyn må signere avtalen først før Sara kan signere.');
+    return;
+  }
+  if (data.error) {
+    showError('Ugyldig eller utløpt lenke.');
+    return;
+  }
+
+  document.getElementById('subtitle').textContent = `Du signerer som: ${data.full_name}`;
+
+  if (data.already_signed) {
+    const ts = new Date(data.signed_at).toLocaleString('no-NO');
+    document.getElementById('content-area').innerHTML =
+      `<div class="note">Du har allerede signert denne avtalen (${escapeHtml(ts)}).</div>
+       <p style="margin-top:1rem;"><a href="/preview" target="_blank">Se kontraktsforhåndsvisning</a></p>`;
+    return;
+  }
+
+  renderForm(data.full_name);
+}
+
+function renderForm(fullName) {
+  const now = new Date();
+  const tsStr = now.toLocaleDateString('no-NO', { weekday:'long', year:'numeric', month:'long', day:'numeric' }) +
+    ' kl. ' + now.toLocaleTimeString('no-NO', { hour:'2-digit', minute:'2-digit' });
+
+  document.getElementById('content-area').innerHTML = `
+    <p style="margin-bottom:0.5rem;">Les gjennom kontrakten under før du signerer.</p>
+    <iframe src="/preview" class="contract-frame" title="Kontraktsforhåndsvisning"></iframe>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="read-checkbox">
+      <label for="read-checkbox">Jeg har lest avtalen i sin helhet</label>
+    </div>
+
+    <div class="signature-area">
+      <div class="signature-label">Signatur for ${escapeHtml(fullName)}</div>
+      <canvas id="signature-canvas" height="200"></canvas>
+      <div class="canvas-actions">
+        <button class="btn btn-secondary" id="clear-btn" type="button">Tøm</button>
+      </div>
+    </div>
+
+    <div class="timestamp">Signeres: ${escapeHtml(tsStr)}</div>
+
+    <div style="display:flex;align-items:center;margin-top:1.5rem;">
+      <button class="btn btn-primary" id="submit-btn" disabled>Signer avtalen</button>
+      <div class="spinner" id="spinner"></div>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+  `;
+
+  const canvas = document.getElementById('signature-canvas');
+  resizeCanvas(canvas);
+
+  signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)' });
+
+  const checkbox = document.getElementById('read-checkbox');
+  const submitBtn = document.getElementById('submit-btn');
+
+  function updateSubmit() {
+    submitBtn.disabled = !(checkbox.checked && !signaturePad.isEmpty());
+  }
+
+  checkbox.addEventListener('change', updateSubmit);
+  signaturePad.addEventListener('endStroke', updateSubmit);
+
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    signaturePad.clear();
+    updateSubmit();
+  });
+
+  submitBtn.addEventListener('click', submitSignature);
+
+  window.addEventListener('resize', () => {
+    const data = signaturePad.toData();
+    resizeCanvas(canvas);
+    signaturePad.clear();
+    signaturePad.fromData(data);
+    updateSubmit();
+  });
+}
+
+function resizeCanvas(canvas) {
+  const ratio = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth || 600;
+  const h = Math.round(w / 3);
+  canvas.width = w * ratio;
+  canvas.height = h * ratio;
+  canvas.style.height = h + 'px';
+  canvas.getContext('2d').scale(ratio, ratio);
+}
+
+async function submitSignature() {
+  const submitBtn = document.getElementById('submit-btn');
+  const spinner = document.getElementById('spinner');
+  const errorMsg = document.getElementById('error-msg');
+
+  if (signaturePad.isEmpty()) {
+    errorMsg.textContent = 'Vennligst tegn signaturen din.';
+    return;
+  }
+
+  submitBtn.disabled = true;
+  spinner.style.display = 'inline-block';
+  errorMsg.textContent = '';
+
+  const signature_dataurl = signaturePad.toDataURL('image/png');
+
+  try {
+    const res = await fetch(`/sign/${party}?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature_dataurl }),
+    });
+    const data = await res.json();
+
+    if (data.ok && data.redirect) {
+      window.location.href = data.redirect;
+    } else {
+      errorMsg.textContent = data.error || 'Noe gikk galt. Prøv igjen.';
+      submitBtn.disabled = false;
+    }
+  } catch {
+    errorMsg.textContent = 'Nettverksfeil. Prøv igjen.';
+    submitBtn.disabled = false;
+  }
+
+  spinner.style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('content-area').innerHTML =
+    `<div class="note" style="border-color:#c0392b;background:#fdecea;">${escapeHtml(msg)}</div>`;
+}
+
+init();
+</script>
+</body>
+</html>

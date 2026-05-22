@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signert – Konsulentavtale</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div class="success-icon">✓</div>
+    <h1 id="heading">Takk!</h1>
+    <div id="message"></div>
+    <div id="actions" style="margin-top:1.5rem;"></div>
+  </div>
+</div>
+
+<script>
+const pathParts = window.location.pathname.split('/');
+const party = pathParts[pathParts.length - 1];
+
+async function init() {
+  const res = await fetch(`/api/signed-info/${party}`);
+  if (!res.ok) {
+    document.getElementById('message').innerHTML = '<p>Fant ikke signeringsinformasjon.</p>';
+    return;
+  }
+  const data = await res.json();
+  const ts = new Date(data.signed_at).toLocaleString('no-NO');
+
+  const msgDiv = document.getElementById('message');
+  const actionsDiv = document.getElementById('actions');
+
+  if (party === 'evelyn') {
+    msgDiv.innerHTML = `
+      <div class="note">Signaturen din ble registrert ${ts}.</div>
+      <p style="margin-top:1rem;">Sara får beskjed når avtalen er klar for hennes signatur.</p>
+    `;
+    actionsDiv.innerHTML = `<a class="btn btn-secondary" href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>`;
+  } else {
+    if (data.both_signed) {
+      msgDiv.innerHTML = `
+        <div class="note">Kontrakten er nå fullt signert av begge parter (${ts}).</div>
+      `;
+      actionsDiv.innerHTML = `<a class="btn btn-primary" href="/download">Last ned signert kontrakt (PDF)</a>`;
+    } else {
+      msgDiv.innerHTML = `<div class="note">Signaturen din ble registrert ${ts}.</div>`;
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>

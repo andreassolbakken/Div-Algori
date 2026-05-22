@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konsulentavtale – Status</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>Konsulentavtale</h1>
+    <h2>Evelyn Floan og Sara Endestad</h2>
+
+    <div id="status-rows">
+      <div class="status-row"><span>Laster...</span></div>
+    </div>
+
+    <div id="note-area"></div>
+    <div id="download-area" style="margin-top:1.5rem;"></div>
+  </div>
+
+  <div class="card" style="font-size:0.9rem;color:#555;">
+    <a href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>
+  </div>
+</div>
+
+<script>
+async function loadStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+
+    const rows = document.getElementById('status-rows');
+    rows.innerHTML = '';
+
+    function makeRow(label, signed, signed_at) {
+      const div = document.createElement('div');
+      div.className = 'status-row';
+      const dateStr = signed && signed_at
+        ? ' ' + new Date(signed_at).toLocaleDateString('no-NO', { day:'numeric', month:'long', year:'numeric' })
+        : '';
+      div.innerHTML = `<span style="flex:1">${label}</span>` +
+        (signed
+          ? `<span class="badge badge-signed">✓ Signert${dateStr}</span>`
+          : `<span class="badge badge-pending">Venter</span>`);
+      return div;
+    }
+
+    rows.appendChild(makeRow('Evelyn Floan (Oppdragsgiver)', data.evelyn.signed, data.evelyn.signed_at));
+    rows.appendChild(makeRow('Sara Katarina Petru Endestad (Oppdragstaker)', data.sara.signed, data.sara.signed_at));
+
+    const noteArea = document.getElementById('note-area');
+    const downloadArea = document.getElementById('download-area');
+
+    if (data.both_signed) {
+      noteArea.innerHTML = '<div class="note">✓ Kontrakten er fullt signert av begge parter.</div>';
+      downloadArea.innerHTML = '<a class="btn btn-primary" href="/download">Last ned signert kontrakt (PDF)</a>';
+    } else if (data.evelyn.signed && !data.sara.signed) {
+      noteArea.innerHTML = '<div class="note">Venter på Saras signatur.</div>';
+    } else {
+      noteArea.innerHTML = '<div class="note">Venter på Evelyns signatur (må signere først).</div>';
+    }
+  } catch (e) {
+    document.getElementById('status-rows').innerHTML = '<div class="status-row"><span>Kunne ikke laste status.</span></div>';
+  }
+}
+
+loadStatus();
+</script>
+</body>
+</html>
