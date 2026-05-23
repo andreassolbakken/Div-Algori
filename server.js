@@ -159,53 +159,69 @@ app.get('/', (req, res) => {
 
 <script src="/signature_pad.min.js"></script>
 <script>
-const pads = {};
+var pads = {};
 
-function initDraw(party) {
-  const canvas = document.getElementById('canvas-' + party);
+function setupPad(party) {
+  var canvas = document.getElementById('canvas-' + party);
   if (!canvas || pads[party]) return;
-  const ratio = window.devicePixelRatio || 1;
-  const w = canvas.parentElement.clientWidth;
-  const h = Math.max(130, Math.round(w * 0.35));
-  canvas.width = w * ratio; canvas.height = h * ratio;
-  canvas.style.height = h + 'px';
+  var w = canvas.offsetWidth;
+  if (!w) return; // not in DOM yet
+  var ratio = window.devicePixelRatio || 1;
+  canvas.width  = w * ratio;
+  canvas.height = 160 * ratio;
+  canvas.style.height = '160px';
   canvas.getContext('2d').scale(ratio, ratio);
-  const p = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#0f1e40', minWidth: 1.5, maxWidth: 3.5 });
-  p.addEventListener('beginStroke', () => { document.getElementById('hint-' + party).style.display = 'none'; });
-  p.addEventListener('endStroke', () => { document.getElementById('submit-' + party).disabled = p.isEmpty(); });
+  var p = new SignaturePad(canvas, {
+    backgroundColor: 'rgb(255,255,255)',
+    penColor: '#0f1e40',
+    minWidth: 1.5,
+    maxWidth: 3.5
+  });
+  p.addEventListener('beginStroke', function() {
+    var h = document.getElementById('hint-' + party);
+    if (h) h.style.display = 'none';
+  });
+  p.addEventListener('endStroke', function() {
+    var btn = document.getElementById('submit-' + party);
+    if (btn) btn.disabled = p.isEmpty();
+  });
   pads[party] = p;
 }
 
 function clearDraw(party) {
-  if (pads[party]) { pads[party].clear(); document.getElementById('hint-' + party).style.display = 'flex'; }
-  document.getElementById('submit-' + party).disabled = true;
+  var p = pads[party];
+  if (p) { p.clear(); }
+  var h = document.getElementById('hint-' + party);
+  if (h) h.style.display = 'flex';
+  var btn = document.getElementById('submit-' + party);
+  if (btn) btn.disabled = true;
 }
 
 async function submitDraw(party) {
-  const p = pads[party];
+  var p = pads[party];
   if (!p || p.isEmpty()) return;
-  const btn = document.getElementById('submit-' + party);
-  const errEl = document.getElementById('err-' + party);
+  var btn = document.getElementById('submit-' + party);
+  var errEl = document.getElementById('err-' + party);
   btn.disabled = true; btn.textContent = 'Lagrer…'; errEl.textContent = '';
   try {
-    const res = await fetch('/sign/' + party, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    var res = await fetch('/sign/' + party, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ signature_dataurl: p.toDataURL('image/png') })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.ok) { window.location.href = '/signed/' + party; return; }
     errEl.textContent = data.error === 'evelyn_must_sign_first' ? 'Evelyn må signere først.' :
                         data.error === 'already_signed' ? 'Allerede signert.' : 'Feil. Prøv igjen.';
     btn.disabled = false; btn.textContent = 'Lagre signatur';
-  } catch(e) { errEl.textContent = 'Nettverksfeil.'; btn.disabled = false; btn.textContent = 'Lagre signatur'; }
+  } catch(e) {
+    errEl.textContent = 'Nettverksfeil.'; btn.disabled = false; btn.textContent = 'Lagre signatur';
+  }
 }
 
-// Init canvases when page is ready
-window.addEventListener('DOMContentLoaded', () => {
-  ['evelyn','sara'].forEach(party => {
-    const el = document.getElementById('canvas-' + party);
-    if (el) initDraw(party);
-  });
+// window.load = all resources done, layout complete, offsetWidth is real
+window.addEventListener('load', function() {
+  ['evelyn','sara'].forEach(setupPad);
 });
 </script>
 
