@@ -36,13 +36,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-secondary:hover { background: #d8dff0; }
 
 /* ── Sign page layout ── */
-body.sign-page { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+/* body.sign-page: no overflow:hidden — that clips position:fixed modals on iOS Safari */
+body.sign-page { background: var(--page-bg); }
 
 .sign-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
   height: var(--header-h);
   background: var(--blue);
   color: #fff;
-  flex-shrink: 0;
   z-index: 50;
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
@@ -73,11 +75,9 @@ body.sign-page { display: flex; flex-direction: column; height: 100dvh; overflow
 }
 
 .sign-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 2rem 1rem calc(var(--bar-h) + 1.5rem);
+  padding: calc(var(--header-h) + 2rem) 1rem calc(var(--bar-h) + 2rem);
   background: var(--page-bg);
-  scroll-behavior: smooth;
+  min-height: 100vh;
 }
 
 /* ── Loading ── */

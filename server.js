@@ -186,13 +186,11 @@ function openSignModal(party) {
   document.getElementById('token-input').value = '';
   document.getElementById('token-error').style.display = 'none';
   document.getElementById('token-modal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
   setTimeout(() => document.getElementById('token-input').focus(), 80);
 }
 
 function closeTokenModal() {
   document.getElementById('token-modal').style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 async function submitToken() {
@@ -417,7 +415,6 @@ document.getElementById('submit-btn').addEventListener('click', submitSignature)
 
 function openModal() {
   document.getElementById('modal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
   if (!signaturePad) initPad();
   else { signaturePad.clear(); document.getElementById('confirm-btn').disabled = true; document.getElementById('canvas-hint').style.opacity = '1'; }
 }
@@ -464,7 +461,7 @@ async function submitSignature() {
   spinner.style.display = 'none';
 }
 
-function closeModal() { document.getElementById('modal').style.display = 'none'; document.body.style.overflow = ''; }
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
 function resizeCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
