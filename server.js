@@ -7,7 +7,7 @@ const helmet = require('helmet');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const { initDb, hasSigned, saveSignature, getAllForAudit, getSignature } = require('./lib/db');
+const { initDb, hasSigned, saveSignature, getAllForAudit, getSignature, resetSignatures } = require('./lib/db');
 const { generateUnsignedPDF, generateSignedPDF, computeHash } = require('./lib/pdf');
 const { renderContractHtml } = require('./lib/contract-html');
 const { blocks } = require('./lib/contract');
@@ -369,6 +369,13 @@ app.get('/download', async (req, res) => {
 app.get('/audit', (req, res) => {
   if (!checkAdminToken(req.query.token)) return res.status(404).send('Ikke funnet.');
   res.json(getAllForAudit());
+});
+
+// ── Admin reset (clears all signatures so contract can be re-signed) ──────────
+app.post('/admin/reset', (req, res) => {
+  if (!checkAdminToken(req.query.token)) return res.status(404).send('Ikke funnet.');
+  resetSignatures();
+  res.json({ ok: true, message: 'Alle signaturer er nullstilt.' });
 });
 
 app.use((req, res) => res.status(404).send('Ikke funnet.'));
