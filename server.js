@@ -164,8 +164,10 @@ var pads = {};
 function setupPad(party) {
   var canvas = document.getElementById('canvas-' + party);
   if (!canvas || pads[party]) return;
+  // Walk up DOM to find a real width — grid cells may not report on canvas directly
   var w = canvas.offsetWidth;
-  if (!w) return; // not in DOM yet
+  if (!w) { var el = canvas.parentElement; while (el && !w) { w = el.offsetWidth; el = el.parentElement; } }
+  if (!w) w = 360; // absolute fallback
   var ratio = window.devicePixelRatio || 1;
   canvas.width  = w * ratio;
   canvas.height = 160 * ratio;
@@ -199,7 +201,8 @@ function clearDraw(party) {
 
 async function submitDraw(party) {
   var p = pads[party];
-  if (!p || p.isEmpty()) return;
+  if (!p) { document.getElementById('err-' + party).textContent = 'Last inn siden på nytt og prøv igjen.'; return; }
+  if (p.isEmpty()) { document.getElementById('err-' + party).textContent = 'Tegn signaturen din først.'; return; }
   var btn = document.getElementById('submit-' + party);
   var errEl = document.getElementById('err-' + party);
   btn.disabled = true; btn.textContent = 'Lagrer…'; errEl.textContent = '';
@@ -219,9 +222,11 @@ async function submitDraw(party) {
   }
 }
 
-// window.load = all resources done, layout complete, offsetWidth is real
+// rAF after window.load ensures one full paint cycle — grid cells have real offsetWidth
 window.addEventListener('load', function() {
-  ['evelyn','sara'].forEach(setupPad);
+  requestAnimationFrame(function() {
+    ['evelyn','sara'].forEach(setupPad);
+  });
 });
 </script>
 
