@@ -160,54 +160,17 @@ body.sign-page { background: var(--page-bg); }
 .ct-sig-img { max-height: 100%; max-width: 100%; object-fit: contain; padding: 4px; }
 .ct-sig-placeholder { font-size: 0.82rem; color: #b0b8c8; font-style: italic; }
 .ct-sig-done { display: flex; align-items: center; gap: 0.4rem; color: var(--green); font-weight: 600; font-size: 0.9rem; }
-/* ── Inline token-entry form in signature column ── */
-.ct-sig-form-wrap {
-  margin-bottom: 0.75rem;
-  background: #f5f7fb;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-}
-.ct-sig-form-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.ct-sig-input {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border: 1.5px solid var(--border);
-  border-radius: 6px;
-  font-size: 0.92rem;
-  font-family: inherit;
-  background: #fff;
-  color: var(--text);
-  margin-bottom: 8px;
-  -webkit-appearance: none;
-}
-.ct-sig-input:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(31,56,100,0.1); }
-.ct-sig-err { font-size: 0.78rem; color: var(--red); min-height: 1rem; margin-bottom: 6px; }
-.btn-sign-go {
-  width: 100%;
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.55rem 1rem;
-  font-size: 0.88rem;
-  font-weight: 700;
+.ct-sig-box--clickable {
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
+  border-color: var(--blue);
+  border-style: dashed;
+  background: #f0f4fd;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--blue);
   transition: background 0.15s;
 }
-.btn-sign-go:hover { background: var(--blue-light); }
+.ct-sig-box--clickable:hover { background: #e2eaf7; }
 .ct-sig-underline { border-top: 1.5px solid var(--text); margin-bottom: 0.5rem; }
 .ct-sig-name { font-weight: 700; font-size: 0.85rem; margin-bottom: 0.15rem; }
 .ct-sig-company { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.25rem; }

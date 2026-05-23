@@ -34,36 +34,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const signLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 5,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'For mange forsøk. Prøv igjen om en time.' },
 });
 
-function timingSafeCompare(a, b) {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) {
-    // still do comparison to avoid timing leak on length
-    crypto.timingSafeEqual(bufA, Buffer.alloc(bufA.length));
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
-function checkToken(provided, envToken) {
-  return timingSafeCompare(provided, envToken);
+function checkAdminToken(provided) {
+  const admin = process.env.ADMIN_TOKEN;
+  if (!admin || !provided) return false;
+  const a = Buffer.from(provided), b = Buffer.from(admin);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 function getClientIp(req) {
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
 
-// ── Status / home page ───────────────────────────────────────────────────────
+// ── Home / contract + signing ─────────────────────────────────────────────────
 app.get('/', (req, res) => {
-  const evelynSig    = getSignature('evelyn');
-  const saraSig      = getSignature('sara');
+  const evelynSig  = getSignature('evelyn');
+  const saraSig    = getSignature('sara');
   const evelynSigned = hasSigned('evelyn');
   const saraSigned   = hasSigned('sara');
   const bothSigned   = evelynSigned && saraSigned;
@@ -84,16 +76,12 @@ app.get('/', (req, res) => {
     if (signed) {
       return `<div class="ct-sig-box"><div class="ct-sig-done"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Signert</div></div>`;
     }
-    return `<div class="ct-sig-form-wrap">
-      <label class="ct-sig-form-label">Din signeringskode</label>
-      <input type="password" id="token-${party}" class="ct-sig-input"
-        placeholder="Lim inn kode her" autocomplete="new-password"
-        onkeydown="if(event.key==='Enter')goSign('${party}')">
-      <div class="ct-sig-err" id="${party}-err"></div>
-      <button class="btn-sign-go" onclick="goSign('${party}')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-        Gå til signering
-      </button>
+    if (party === 'sara' && !evelynSigned) {
+      return `<div class="ct-sig-box"><span class="ct-sig-placeholder">Venter på Evelyns signatur</span></div>`;
+    }
+    return `<div class="ct-sig-box ct-sig-box--clickable" onclick="openSigModal('${party}')" role="button" tabindex="0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      <span style="font-size:0.82rem;font-weight:600;">Klikk for å signere</span>
     </div>`;
   }
 
@@ -115,10 +103,10 @@ app.get('/', (req, res) => {
 <header class="sign-header">
   <div class="sign-header-inner">
     <div class="sign-header-brand">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Konsulentavtale
     </div>
-    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
       ${statusBadge(evelynSigned, evelynSig)}
       ${statusBadge(saraSigned, saraSig)}
     </div>
@@ -136,7 +124,7 @@ app.get('/', (req, res) => {
 
     <section class="ct-sig-section">
       <h2 class="ct-h2">20. Signaturer</h2>
-      <p class="ct-para">Les kontrakten nøye. Skriv inn din private signeringskode i feltet nedenfor for å gå til signering.</p>
+      <p class="ct-para">Klikk på ditt signaturfelt for å tegne signaturen din.</p>
       <div class="ct-sig-columns">
         <div class="ct-sig-col ${!evelynSigned ? 'ct-sig-col--active' : ''}">
           <div class="ct-sig-role">For Oppdragsgiver</div>
@@ -160,26 +148,115 @@ app.get('/', (req, res) => {
   </div>
 </main>
 
+<!-- Signature modal -->
+<div class="modal-overlay" id="sig-modal" style="display:none">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="modal-header">
+      <h2>Tegn din signatur</h2>
+      <p class="modal-sub" id="modal-name"></p>
+    </div>
+    <div class="modal-canvas-wrap">
+      <canvas id="sig-canvas"></canvas>
+      <div class="canvas-hint" id="canvas-hint">Tegn signaturen din her</div>
+    </div>
+    <div class="modal-footer" style="margin-top:1rem;">
+      <button class="btn btn-ghost" onclick="clearPad()">Tøm</button>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <div class="spinner" id="sig-spinner"></div>
+        <button class="btn btn-confirm" id="confirm-btn" disabled onclick="submitSig()">Bekreft signatur</button>
+      </div>
+    </div>
+    <div style="font-size:0.78rem;color:var(--muted);margin-top:0.75rem;text-align:center;" id="sig-err"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/signature_pad@4/dist/signature_pad.umd.min.js"></script>
 <script>
-async function goSign(party) {
-  const tokenEl = document.getElementById('token-' + party);
-  const errEl   = document.getElementById(party + '-err');
-  const token   = tokenEl.value.trim();
-  if (!token) { errEl.textContent = 'Skriv inn signeringskode.'; return; }
-  errEl.textContent = '';
-  tokenEl.disabled = true;
-  try {
-    const res  = await fetch('/api/sign-info/' + party + '?token=' + encodeURIComponent(token));
-    if (!res.ok) throw new Error('Feil kode. Prøv igjen.');
-    const data = await res.json();
-    if (data.error === 'evelyn_must_sign_first') throw new Error('Evelyn må signere før Sara.');
-    if (data.error) throw new Error('Feil kode. Prøv igjen.');
-    window.location.href = '/sign/' + party + '?token=' + encodeURIComponent(token);
-  } catch(e) {
-    errEl.textContent = e.message;
-    tokenEl.disabled = false;
-    tokenEl.focus();
+let pad = null, activeParty = null;
+
+function openSigModal(party) {
+  activeParty = party;
+  const names = { evelyn: 'Evelyn Floan', sara: 'Sara Katarina Petru Endestad' };
+  document.getElementById('modal-name').textContent = names[party];
+  document.getElementById('confirm-btn').disabled = true;
+  document.getElementById('sig-err').textContent = '';
+  document.getElementById('sig-spinner').style.display = 'none';
+  document.getElementById('sig-modal').style.display = 'flex';
+  initPad();
+}
+
+function initPad() {
+  const canvas = document.getElementById('sig-canvas');
+  resizeCanvas(canvas);
+  if (pad) {
+    pad.clear();
+    document.getElementById('canvas-hint').style.opacity = '1';
+  } else {
+    pad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#0f1e40', minWidth: 1.5, maxWidth: 3.5 });
+    pad.addEventListener('beginStroke', () => { document.getElementById('canvas-hint').style.opacity = '0'; });
+    pad.addEventListener('endStroke', () => { document.getElementById('confirm-btn').disabled = pad.isEmpty(); });
+    window.addEventListener('resize', () => {
+      const d = pad.toData(); resizeCanvas(canvas); pad.clear();
+      if (d && d.length) pad.fromData(d);
+      document.getElementById('confirm-btn').disabled = pad.isEmpty();
+    });
   }
+}
+
+function clearPad() {
+  if (pad) pad.clear();
+  document.getElementById('canvas-hint').style.opacity = '1';
+  document.getElementById('confirm-btn').disabled = true;
+}
+
+function closeModal() {
+  document.getElementById('sig-modal').style.display = 'none';
+}
+
+async function submitSig() {
+  const dataUrl = pad.toDataURL('image/png');
+  const btn = document.getElementById('confirm-btn');
+  const spinner = document.getElementById('sig-spinner');
+  const errEl = document.getElementById('sig-err');
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  errEl.textContent = '';
+  try {
+    const res = await fetch('/sign/' + activeParty, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature_dataurl: dataUrl })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = '/signed/' + activeParty;
+      return;
+    }
+    const msg = data.error === 'evelyn_must_sign_first' ? 'Evelyn må signere før Sara.' :
+                data.error === 'already_signed' ? 'Allerede signert.' : 'Noe gikk galt. Prøv igjen.';
+    errEl.textContent = msg;
+    btn.disabled = false;
+  } catch(e) {
+    errEl.textContent = 'Nettverksfeil. Prøv igjen.';
+    btn.disabled = false;
+  }
+  spinner.style.display = 'none';
+}
+
+document.getElementById('sig-modal').addEventListener('click', e => {
+  if (e.target.id === 'sig-modal') closeModal();
+});
+
+function resizeCanvas(canvas) {
+  const ratio = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.clientWidth;
+  const h = Math.max(160, Math.round(w * 0.38));
+  canvas.width = w * ratio; canvas.height = h * ratio;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.getContext('2d').scale(ratio, ratio);
 }
 </script>
 
@@ -189,25 +266,18 @@ async function goSign(party) {
   res.send(html);
 });
 
+// ── Status JSON ───────────────────────────────────────────────────────────────
 app.get('/api/status', (req, res) => {
-  const evelynSigned = hasSigned('evelyn');
-  const saraSigned = hasSigned('sara');
   const evelynSig = getSignature('evelyn');
-  const saraSig = getSignature('sara');
+  const saraSig   = getSignature('sara');
   res.json({
-    evelyn: { signed: evelynSigned, signed_at: evelynSig?.signed_at || null },
-    sara: { signed: saraSigned, signed_at: saraSig?.signed_at || null },
-    both_signed: evelynSigned && saraSigned,
+    evelyn: { signed: hasSigned('evelyn'), signed_at: evelynSig?.signed_at || null },
+    sara:   { signed: hasSigned('sara'),   signed_at: saraSig?.signed_at   || null },
+    both_signed: hasSigned('evelyn') && hasSigned('sara'),
   });
 });
 
-// ── Contract HTML ─────────────────────────────────────────────────────────────
-app.get('/api/contract-html', (req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(renderContractHtml(blocks));
-});
-
-// ── Preview ──────────────────────────────────────────────────────────────────
+// ── Preview PDF ───────────────────────────────────────────────────────────────
 app.get('/preview', async (req, res) => {
   try {
     const buf = await generateUnsignedPDF();
@@ -220,263 +290,11 @@ app.get('/preview', async (req, res) => {
   }
 });
 
-// ── Sign pages ────────────────────────────────────────────────────────────────
-app.get('/sign/:party', (req, res) => {
-  const party = req.params.party;
-  if (!['evelyn', 'sara'].includes(party)) return res.status(404).send('Ikke funnet.');
-
-  const token = req.query.token;
-  const envToken = party === 'evelyn' ? process.env.EVELYN_TOKEN : process.env.SARA_TOKEN;
-  if (!checkToken(token, envToken)) return res.status(404).send('Ikke funnet.');
-
-  const evelynSig = getSignature('evelyn');
-  const saraSig = getSignature('sara');
-  const evelynSigned = hasSigned('evelyn');
-  const saraSigned = hasSigned('sara');
-  const currentSig = party === 'evelyn' ? evelynSig : saraSig;
-  const alreadySigned = party === 'evelyn' ? evelynSigned : saraSigned;
-  const mustWait = party === 'sara' && !evelynSigned;
-  const contractHtml = renderContractHtml(blocks);
-
-  function sigBox(p, sig, signed) {
-    if (signed && sig && sig.signature_dataurl) {
-      return `<img src="${sig.signature_dataurl}" alt="Signatur" class="ct-sig-img">`;
-    }
-    if (signed) {
-      return `<div class="ct-sig-done"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Signert</div>`;
-    }
-    if (p === party && !alreadySigned && !mustWait) {
-      return `<span class="ct-sig-placeholder" id="sig-preview-placeholder">Din signatur vises her</span>`;
-    }
-    return `<span class="ct-sig-placeholder">Signatur</span>`;
-  }
-
-  function sigMeta(sig, signed) {
-    if (!signed || !sig || !sig.signed_at) return '';
-    const d = new Date(sig.signed_at);
-    return d.toLocaleString('no-NO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  }
-
-  const activeClass = !alreadySigned && !mustWait ? 'ct-sig-col--active' : '';
-
-  const html = `<!DOCTYPE html>
-<html lang="no">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Signer konsulentavtale</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body class="sign-page">
-
-<header class="sign-header">
-  <div class="sign-header-inner">
-    <div class="sign-header-brand">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      Konsulentavtale
-    </div>
-    <div class="sign-header-party">${currentSig ? currentSig.full_name : ''}</div>
-  </div>
-</header>
-
-<main class="sign-main">
-  ${mustWait ? `<div class="wait-banner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Venter på Evelyns signatur — du kan lese kontrakten, men kan ikke signere ennå.</div>` : ''}
-  ${alreadySigned ? `<div class="already-banner"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Du har allerede signert denne avtalen (${sigMeta(currentSig, true)}).${hasSigned('evelyn') && hasSigned('sara') ? ' <a href="/download">Last ned signert kontrakt →</a>' : ''}</div>` : ''}
-
-  <div class="contract-paper">
-    ${contractHtml}
-
-    <section class="ct-sig-section" id="sig-section">
-      <h2 class="ct-h2">20. Signaturer</h2>
-      <p class="ct-para">Avtalen er signert elektronisk. Begge parter bekrefter å ha lest og godkjent innholdet.</p>
-      <div class="ct-sig-columns">
-        <div class="ct-sig-col ${party === 'evelyn' ? activeClass : ''}">
-          <div class="ct-sig-role">For Oppdragsgiver</div>
-          <div class="ct-sig-box" id="evelyn-sig-box">${sigBox('evelyn', evelynSig, evelynSigned)}</div>
-          <div class="ct-sig-underline"></div>
-          <div class="ct-sig-name">Evelyn Floan</div>
-          <div class="ct-sig-company">EVELYN FLOAN · orgnr 917 013 101</div>
-          <div class="ct-sig-meta">${sigMeta(evelynSig, evelynSigned)}</div>
-        </div>
-        <div class="ct-sig-col ${party === 'sara' ? activeClass : ''}">
-          <div class="ct-sig-role">For Oppdragstaker</div>
-          <div class="ct-sig-box" id="sara-sig-box">${sigBox('sara', saraSig, saraSigned)}</div>
-          <div class="ct-sig-underline"></div>
-          <div class="ct-sig-name">Sara Katarina Petru Endestad</div>
-          <div class="ct-sig-company">ENDESTAD · orgnr 924 590 904</div>
-          <div class="ct-sig-meta">${sigMeta(saraSig, saraSigned)}</div>
-        </div>
-      </div>
-    </section>
-  </div>
-</main>
-
-${!alreadySigned && !mustWait ? `
-<div class="action-bar" id="action-bar">
-  <label class="action-bar-check">
-    <input type="checkbox" id="read-check">
-    <span>Jeg har lest og godkjent avtalen</span>
-  </label>
-  <button class="btn btn-sign" id="sign-btn" disabled>
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-    Signer avtalen
-  </button>
-</div>
-
-<div class="action-bar action-bar--signed" id="submit-bar" style="display:none">
-  <div class="submit-status">
-    <span class="submit-check-icon">✓</span>
-    <span>Signatur klar</span>
-  </div>
-  <div style="display:flex;align-items:center;gap:0.75rem;">
-    <button class="btn btn-ghost-small" id="redo-btn">Tegn på nytt</button>
-    <div class="spinner" id="spinner"></div>
-    <button class="btn btn-sign" id="submit-btn">Send inn og bekreft</button>
-  </div>
-</div>
-<div class="form-error" id="error-msg" style="display:none"></div>
-
-<div class="modal-overlay" id="modal" style="display:none">
-  <div class="modal-box">
-    <button class="modal-close" id="modal-close" aria-label="Lukk">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-    <div class="modal-header">
-      <h2>Tegn din signatur</h2>
-      <p class="modal-sub">${currentSig ? currentSig.full_name : ''}</p>
-    </div>
-    <div class="modal-canvas-wrap" id="canvas-wrap">
-      <canvas id="sig-canvas"></canvas>
-      <div class="canvas-hint" id="canvas-hint">Tegn signaturen din her</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" id="clear-btn">Tøm</button>
-      <button class="btn btn-confirm" id="confirm-btn" disabled>Bekreft signatur</button>
-    </div>
-  </div>
-</div>
-
-<script src="https://unpkg.com/signature_pad@4/dist/signature_pad.umd.min.js"></script>
-<script>
-const party = ${JSON.stringify(party)};
-const token = ${JSON.stringify(token)};
-let signaturePad, capturedDataUrl;
-
-const checkbox = document.getElementById('read-check');
-const signBtn = document.getElementById('sign-btn');
-checkbox.addEventListener('change', () => { signBtn.disabled = !checkbox.checked; });
-signBtn.addEventListener('click', openModal);
-
-document.getElementById('redo-btn').addEventListener('click', () => {
-  capturedDataUrl = null;
-  document.getElementById(party + '-sig-box').innerHTML = '<span class="ct-sig-placeholder">Din signatur vises her</span>';
-  document.getElementById('submit-bar').style.display = 'none';
-  document.getElementById('action-bar').style.display = '';
-  signBtn.disabled = !checkbox.checked;
-});
-
-document.getElementById('submit-btn').addEventListener('click', submitSignature);
-
-function openModal() {
-  document.getElementById('modal').style.display = 'flex';
-  if (!signaturePad) initPad();
-  else { signaturePad.clear(); document.getElementById('confirm-btn').disabled = true; document.getElementById('canvas-hint').style.opacity = '1'; }
-}
-
-function initPad() {
-  const canvas = document.getElementById('sig-canvas');
-  resizeCanvas(canvas);
-  signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#0f1e40', minWidth: 1.5, maxWidth: 3.5 });
-  signaturePad.addEventListener('beginStroke', () => { document.getElementById('canvas-hint').style.opacity = '0'; });
-  signaturePad.addEventListener('endStroke', () => { document.getElementById('confirm-btn').disabled = signaturePad.isEmpty(); });
-  document.getElementById('clear-btn').addEventListener('click', () => { signaturePad.clear(); document.getElementById('confirm-btn').disabled = true; document.getElementById('canvas-hint').style.opacity = '1'; });
-  document.getElementById('confirm-btn').addEventListener('click', confirmSignature);
-  document.getElementById('modal-close').addEventListener('click', closeModal);
-  document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-  window.addEventListener('resize', () => { const d = signaturePad.toData(); resizeCanvas(canvas); signaturePad.clear(); if (d && d.length) signaturePad.fromData(d); document.getElementById('confirm-btn').disabled = signaturePad.isEmpty(); });
-}
-
-function confirmSignature() {
-  capturedDataUrl = signaturePad.toDataURL('image/png');
-  document.getElementById(party + '-sig-box').innerHTML = '<img src="' + capturedDataUrl + '" alt="Signatur" class="ct-sig-img">';
-  closeModal();
-  document.getElementById('sig-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  document.getElementById('action-bar').style.display = 'none';
-  document.getElementById('submit-bar').style.display = '';
-}
-
-async function submitSignature() {
-  if (!capturedDataUrl) return;
-  const submitBtn = document.getElementById('submit-btn');
-  const spinner = document.getElementById('spinner');
-  const errorMsg = document.getElementById('error-msg');
-  submitBtn.disabled = true; spinner.style.display = 'inline-block'; errorMsg.style.display = 'none';
-  try {
-    const res = await fetch('/sign/' + party + '?token=' + encodeURIComponent(token), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signature_dataurl: capturedDataUrl }),
-    });
-    const data = await res.json();
-    if (data.ok && data.redirect) { window.location.href = data.redirect; return; }
-    errorMsg.textContent = data.error || 'Noe gikk galt. Prøv igjen.';
-    errorMsg.style.display = 'block';
-    submitBtn.disabled = false;
-  } catch { errorMsg.textContent = 'Nettverksfeil. Prøv igjen.'; errorMsg.style.display = 'block'; submitBtn.disabled = false; }
-  spinner.style.display = 'none';
-}
-
-function closeModal() { document.getElementById('modal').style.display = 'none'; }
-
-function resizeCanvas(canvas) {
-  const ratio = window.devicePixelRatio || 1;
-  const w = canvas.parentElement.clientWidth;
-  const h = Math.max(150, Math.round(w * 0.33));
-  canvas.width = w * ratio; canvas.height = h * ratio;
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-  canvas.getContext('2d').scale(ratio, ratio);
-}
-</script>
-` : ''}
-
-</body>
-</html>`;
-
-  res.send(html);
-});
-
-app.get('/api/sign-info/:party', (req, res) => {
-  const party = req.params.party;
-  if (!['evelyn', 'sara'].includes(party)) return res.status(404).json({ error: 'Ikke funnet.' });
-
-  const token = req.query.token;
-  const envToken = party === 'evelyn' ? process.env.EVELYN_TOKEN : process.env.SARA_TOKEN;
-  if (!checkToken(token, envToken)) return res.status(404).json({ error: 'Ikke funnet.' });
-
-  if (party === 'sara' && !hasSigned('evelyn')) {
-    return res.json({ error: 'evelyn_must_sign_first' });
-  }
-
-  const signed = hasSigned(party);
-  const sig = getSignature(party);
-  res.json({
-    party,
-    full_name: sig?.full_name,
-    already_signed: signed,
-    signed_at: sig?.signed_at || null,
-  });
-});
-
-// ── POST sign ────────────────────────────────────────────────────────────────
+// ── POST sign (no token required) ────────────────────────────────────────────
 app.post('/sign/:party', signLimiter, async (req, res) => {
   const party = req.params.party;
   if (!['evelyn', 'sara'].includes(party)) return res.status(404).json({ error: 'Ikke funnet.' });
-
-  const token = req.query.token;
-  const envToken = party === 'evelyn' ? process.env.EVELYN_TOKEN : process.env.SARA_TOKEN;
-  if (!checkToken(token, envToken)) return res.status(404).json({ error: 'Ikke funnet.' });
-
   if (hasSigned(party)) return res.status(409).json({ error: 'already_signed' });
-
   if (party === 'sara' && !hasSigned('evelyn')) {
     return res.status(403).json({ error: 'evelyn_must_sign_first' });
   }
@@ -485,23 +303,17 @@ app.post('/sign/:party', signLimiter, async (req, res) => {
   if (!signature_dataurl || typeof signature_dataurl !== 'string') {
     return res.status(400).json({ error: 'Mangler signatur.' });
   }
-
-  // Validate it's a PNG dataurl
   if (!signature_dataurl.startsWith('data:image/png;base64,')) {
     return res.status(400).json({ error: 'Ugyldig signaturformat.' });
   }
-
-  // Validate non-trivial (>500 bytes decoded)
-  const base64Part = signature_dataurl.replace('data:image/png;base64,', '');
-  const decoded = Buffer.from(base64Part, 'base64');
+  const decoded = Buffer.from(signature_dataurl.replace('data:image/png;base64,', ''), 'base64');
   if (decoded.length < 500) {
-    return res.status(400).json({ error: 'Signaturen er for liten. Vennligst tegn en tydelig signatur.' });
+    return res.status(400).json({ error: 'Signaturen er for liten. Tegn en tydelig signatur.' });
   }
 
   try {
     const unsignedBuf = await generateUnsignedPDF();
     const pdf_hash = computeHash(unsignedBuf);
-
     await saveSignature(party, {
       signature_dataurl,
       signed_at: new Date().toISOString(),
@@ -509,8 +321,7 @@ app.post('/sign/:party', signLimiter, async (req, res) => {
       user_agent: req.headers['user-agent'] || '',
       pdf_hash,
     });
-
-    res.json({ ok: true, redirect: `/signed/${party}` });
+    res.json({ ok: true });
   } catch (err) {
     console.error('Sign error:', err);
     res.status(500).json({ error: 'Feil ved lagring av signatur.' });
@@ -537,7 +348,7 @@ app.get('/api/signed-info/:party', (req, res) => {
   });
 });
 
-// ── Download ─────────────────────────────────────────────────────────────────
+// ── Download signed PDF ───────────────────────────────────────────────────────
 app.get('/download', async (req, res) => {
   if (!hasSigned('evelyn') || !hasSigned('sara')) {
     return res.status(403).send('Kontrakten er ikke fullt signert ennå.');
@@ -554,23 +365,16 @@ app.get('/download', async (req, res) => {
   }
 });
 
-// ── Audit ─────────────────────────────────────────────────────────────────────
+// ── Audit log ─────────────────────────────────────────────────────────────────
 app.get('/audit', (req, res) => {
-  const token = req.query.token;
-  if (!checkToken(token, process.env.ADMIN_TOKEN)) return res.status(404).send('Ikke funnet.');
-  const rows = getAllForAudit();
-  res.json(rows);
+  if (!checkAdminToken(req.query.token)) return res.status(404).send('Ikke funnet.');
+  res.json(getAllForAudit());
 });
 
-// ── 404 ───────────────────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).send('Ikke funnet.');
-});
+app.use((req, res) => res.status(404).send('Ikke funnet.'));
 
 initDb().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server kjører på port ${PORT}`);
-  });
+  app.listen(PORT, () => console.log(`Server kjører på port ${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err);
   process.exit(1);
