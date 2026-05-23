@@ -60,9 +60,171 @@ function getClientIp(req) {
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
 
-// ── Status page ──────────────────────────────────────────────────────────────
+// ── Status / home page ───────────────────────────────────────────────────────
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'status.html'));
+  const evelynSig    = getSignature('evelyn');
+  const saraSig      = getSignature('sara');
+  const evelynSigned = hasSigned('evelyn');
+  const saraSigned   = hasSigned('sara');
+  const bothSigned   = evelynSigned && saraSigned;
+  const contractHtml = renderContractHtml(blocks);
+
+  function statusBadge(signed, sig) {
+    if (signed && sig && sig.signed_at) {
+      const d = new Date(sig.signed_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'long', year: 'numeric' });
+      return `<span class="badge badge-signed">✓ Signert ${d}</span>`;
+    }
+    return `<span class="badge badge-pending">Venter</span>`;
+  }
+
+  function sigBox(party, sig, signed) {
+    if (signed && sig && sig.signature_dataurl) {
+      return `<img src="${sig.signature_dataurl}" alt="Signatur" class="ct-sig-img">`;
+    }
+    if (signed) {
+      return `<div class="ct-sig-done"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Signert</div>`;
+    }
+    return `<button class="btn-sign-inline" onclick="openSignModal('${party}')">Trykk for å signere</button>`;
+  }
+
+  function sigMeta(sig, signed) {
+    if (!signed || !sig || !sig.signed_at) return '';
+    return new Date(sig.signed_at).toLocaleString('no-NO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konsulentavtale – Evelyn Floan og Sara Endestad</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="sign-page">
+
+<header class="sign-header">
+  <div class="sign-header-inner">
+    <div class="sign-header-brand">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Konsulentavtale
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;">
+      ${statusBadge(evelynSigned, evelynSig)}
+      ${statusBadge(saraSigned, saraSig)}
+    </div>
+  </div>
+</header>
+
+<main class="sign-main">
+  ${bothSigned ? `<div class="already-banner" style="margin-bottom:1rem;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    Kontrakten er fullt signert av begge parter. &nbsp;<a href="/download" style="font-weight:700;color:var(--blue);">Last ned signert PDF →</a>
+  </div>` : ''}
+
+  <div class="contract-paper">
+    ${contractHtml}
+
+    <section class="ct-sig-section">
+      <h2 class="ct-h2">20. Signaturer</h2>
+      <p class="ct-para">Les kontrakten nøye. Klikk på ditt signeringsfelt nedenfor og skriv inn din private kode for å signere.</p>
+      <div class="ct-sig-columns">
+        <div class="ct-sig-col ${!evelynSigned ? 'ct-sig-col--active' : ''}">
+          <div class="ct-sig-role">For Oppdragsgiver</div>
+          <div class="ct-sig-box" id="evelyn-sig-box">${sigBox('evelyn', evelynSig, evelynSigned)}</div>
+          <div class="ct-sig-underline"></div>
+          <div class="ct-sig-name">Evelyn Floan</div>
+          <div class="ct-sig-company">EVELYN FLOAN · orgnr 917 013 101</div>
+          <div class="ct-sig-meta">${sigMeta(evelynSig, evelynSigned)}</div>
+        </div>
+        <div class="ct-sig-col ${evelynSigned && !saraSigned ? 'ct-sig-col--active' : ''}">
+          <div class="ct-sig-role">For Oppdragstaker</div>
+          <div class="ct-sig-box" id="sara-sig-box">${sigBox('sara', saraSig, saraSigned)}</div>
+          <div class="ct-sig-underline"></div>
+          <div class="ct-sig-name">Sara Katarina Petru Endestad</div>
+          <div class="ct-sig-company">ENDESTAD · orgnr 924 590 904</div>
+          <div class="ct-sig-meta">${sigMeta(saraSig, saraSigned)}</div>
+        </div>
+      </div>
+      ${!evelynSigned ? `<p class="ct-para" style="margin-top:1rem;color:var(--muted);font-size:0.82rem;">Evelyn signerer først, deretter Sara.</p>` : ''}
+    </section>
+  </div>
+</main>
+
+<!-- Token entry modal -->
+<div class="modal-overlay" id="token-modal" style="display:none">
+  <div class="modal-box" style="max-width:400px">
+    <button class="modal-close" onclick="closeTokenModal()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="modal-header">
+      <h2 id="token-modal-title">Skriv inn signeringskode</h2>
+      <p class="modal-sub">Koden ble sendt til deg privat.</p>
+    </div>
+    <div style="margin:1.25rem 0;">
+      <input type="password" id="token-input"
+        placeholder="Lim inn signeringskode"
+        style="width:100%;padding:0.75rem 1rem;border:1.5px solid var(--border);border-radius:8px;font-size:1rem;outline:none;font-family:inherit;"
+        onkeydown="if(event.key==='Enter')submitToken()">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
+      <div class="form-error" id="token-error" style="display:none;position:static;transform:none;background:none;border:none;padding:0;font-size:0.85rem;color:var(--red);"></div>
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-left:auto;">
+        <div class="spinner" id="token-spinner"></div>
+        <button class="btn btn-confirm" onclick="submitToken()">Gå til signering →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let activeParty = null;
+
+function openSignModal(party) {
+  activeParty = party;
+  const names = { evelyn: 'Evelyn Floan', sara: 'Sara Katarina Petru Endestad' };
+  document.getElementById('token-modal-title').textContent = 'Signer som ' + names[party];
+  document.getElementById('token-input').value = '';
+  document.getElementById('token-error').style.display = 'none';
+  document.getElementById('token-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('token-input').focus(), 80);
+}
+
+function closeTokenModal() {
+  document.getElementById('token-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function submitToken() {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) return;
+  const spinner = document.getElementById('token-spinner');
+  const errEl   = document.getElementById('token-error');
+  spinner.style.display = 'inline-block';
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/sign-info/' + activeParty + '?token=' + encodeURIComponent(token));
+    if (!res.ok) throw new Error('Feil kode. Prøv igjen.');
+    const data = await res.json();
+    if (data.error === 'evelyn_must_sign_first') throw new Error('Evelyn må signere før Sara.');
+    if (data.error) throw new Error('Feil kode. Prøv igjen.');
+    window.location.href = '/sign/' + activeParty + '?token=' + encodeURIComponent(token);
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+  spinner.style.display = 'none';
+}
+
+document.getElementById('token-modal').addEventListener('click', e => {
+  if (e.target.id === 'token-modal') closeTokenModal();
+});
+</script>
+
+</body>
+</html>`;
+
+  res.send(html);
 });
 
 app.get('/api/status', (req, res) => {
@@ -162,7 +324,7 @@ app.get('/sign/:party', (req, res) => {
   <div class="contract-paper">
     ${contractHtml}
 
-    <section class="ct-sig-section">
+    <section class="ct-sig-section" id="sig-section">
       <h2 class="ct-h2">20. Signaturer</h2>
       <p class="ct-para">Avtalen er signert elektronisk. Begge parter bekrefter å ha lest og godkjent innholdet.</p>
       <div class="ct-sig-columns">

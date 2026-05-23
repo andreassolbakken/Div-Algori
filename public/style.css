@@ -160,6 +160,19 @@ body.sign-page { display: flex; flex-direction: column; height: 100dvh; overflow
 .ct-sig-img { max-height: 100%; max-width: 100%; object-fit: contain; padding: 4px; }
 .ct-sig-placeholder { font-size: 0.82rem; color: #b0b8c8; font-style: italic; }
 .ct-sig-done { display: flex; align-items: center; gap: 0.4rem; color: var(--green); font-weight: 600; font-size: 0.9rem; }
+.btn-sign-inline {
+  width: 100%; height: 100%;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background 0.15s;
+}
+.btn-sign-inline:hover { background: var(--blue-light); }
 .ct-sig-underline { border-top: 1.5px solid var(--text); margin-bottom: 0.5rem; }
 .ct-sig-name { font-weight: 700; font-size: 0.85rem; margin-bottom: 0.15rem; }
 .ct-sig-company { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.25rem; }
