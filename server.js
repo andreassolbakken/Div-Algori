@@ -157,37 +157,80 @@ app.get('/', (req, res) => {
   </div>
 </main>
 
-<script src="/signature_pad.min.js"></script>
 <script>
 var pads = {};
 
 function setupPad(party) {
   var canvas = document.getElementById('canvas-' + party);
   if (!canvas || pads[party]) return;
-  // Walk up DOM to find a real width — grid cells may not report on canvas directly
+
   var w = canvas.offsetWidth;
   if (!w) { var el = canvas.parentElement; while (el && !w) { w = el.offsetWidth; el = el.parentElement; } }
-  if (!w) w = 360; // absolute fallback
+  if (!w) w = 360;
+
   var ratio = window.devicePixelRatio || 1;
   canvas.width  = w * ratio;
   canvas.height = 160 * ratio;
   canvas.style.height = '160px';
-  canvas.getContext('2d').scale(ratio, ratio);
-  var p = new SignaturePad(canvas, {
-    backgroundColor: 'rgb(255,255,255)',
-    penColor: '#0f1e40',
-    minWidth: 1.5,
-    maxWidth: 3.5
-  });
-  p.addEventListener('beginStroke', function() {
+
+  var ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, 160);
+  ctx.strokeStyle = '#0f1e40';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  var drawing = false;
+  var hasDrawn = false;
+
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var src = e.changedTouches ? e.changedTouches[0] : e;
+    return { x: (src.clientX - rect.left) * (w / rect.width),
+             y: (src.clientY - rect.top)  * (160 / rect.height) };
+  }
+
+  function onStart(e) {
+    e.preventDefault();
+    drawing = true;
+    var pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
     var h = document.getElementById('hint-' + party);
     if (h) h.style.display = 'none';
-  });
-  p.addEventListener('endStroke', function() {
-    var btn = document.getElementById('submit-' + party);
-    if (btn) btn.disabled = p.isEmpty();
-  });
-  pads[party] = p;
+  }
+
+  function onMove(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    if (!hasDrawn) {
+      hasDrawn = true;
+      var btn = document.getElementById('submit-' + party);
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function onEnd(e) { drawing = false; ctx.beginPath(); }
+
+  canvas.addEventListener('mousedown',  onStart);
+  canvas.addEventListener('mousemove',  onMove);
+  canvas.addEventListener('mouseup',    onEnd);
+  canvas.addEventListener('touchstart', onStart, { passive: false });
+  canvas.addEventListener('touchmove',  onMove,  { passive: false });
+  canvas.addEventListener('touchend',   onEnd,   { passive: false });
+
+  pads[party] = {
+    clear:     function() { ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,160); hasDrawn=false; },
+    isEmpty:   function() { return !hasDrawn; },
+    toDataURL: function(t) { return canvas.toDataURL(t||'image/png'); }
+  };
 }
 
 function clearDraw(party) {
@@ -201,10 +244,10 @@ function clearDraw(party) {
 
 async function submitDraw(party) {
   var p = pads[party];
-  if (!p) { document.getElementById('err-' + party).textContent = 'Last inn siden på nytt og prøv igjen.'; return; }
-  if (p.isEmpty()) { document.getElementById('err-' + party).textContent = 'Tegn signaturen din først.'; return; }
-  var btn = document.getElementById('submit-' + party);
   var errEl = document.getElementById('err-' + party);
+  if (!p) { errEl.textContent = 'Last inn siden på nytt.'; return; }
+  if (p.isEmpty()) { errEl.textContent = 'Tegn signaturen din først.'; return; }
+  var btn = document.getElementById('submit-' + party);
   btn.disabled = true; btn.textContent = 'Lagrer…'; errEl.textContent = '';
   try {
     var res = await fetch('/sign/' + party, {
@@ -222,11 +265,8 @@ async function submitDraw(party) {
   }
 }
 
-// rAF after window.load ensures one full paint cycle — grid cells have real offsetWidth
 window.addEventListener('load', function() {
-  requestAnimationFrame(function() {
-    ['evelyn','sara'].forEach(setupPad);
-  });
+  requestAnimationFrame(function() { ['evelyn','sara'].forEach(setupPad); });
 });
 </script>
 
