@@ -34,12 +34,27 @@ async function init() {
   const actionsDiv = document.getElementById('actions');
 
   if (party === 'evelyn') {
-    document.getElementById('heading').textContent = 'Signatur registrert!';
-    msgDiv.innerHTML = `
-      <div class="signed-note">Signaturen din ble registrert ${ts}.</div>
-      <p>Sara vil bli kontaktet når avtalen er klar for hennes signatur.</p>
-    `;
-    actionsDiv.innerHTML = `<a class="btn-preview" href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>`;
+    if (data.both_signed) {
+      document.getElementById('heading').textContent = 'Kontrakten er fullt signert!';
+      document.getElementById('icon').textContent = '🎉';
+      msgDiv.innerHTML = `
+        <div class="signed-note">Begge parter har signert. Avtalen er bindende fra ${ts}.</div>
+      `;
+      actionsDiv.innerHTML = `
+        <a class="btn-download" href="/download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Last ned signert kontrakt (PDF)
+        </a>
+        <a class="btn-preview" href="/preview" target="_blank">Se forhåndsvisning</a>
+      `;
+    } else {
+      document.getElementById('heading').textContent = 'Signatur registrert!';
+      msgDiv.innerHTML = `
+        <div class="signed-note">Signaturen din ble registrert ${ts}.</div>
+        <p style="color:#6b7280;font-size:0.9rem;margin-top:0.75rem;">Sara vil nå bli kontaktet for sin signatur. Når begge har signert kan du laste ned den signerte kontrakten fra <a href="/" style="color:#1f3864;">statussiden</a>.</p>
+      `;
+      actionsDiv.innerHTML = `<a class="btn-preview" href="/preview" target="_blank">Se kontraktsforhåndsvisning (PDF)</a>`;
+    }
   } else {
     if (data.both_signed) {
       document.getElementById('heading').textContent = 'Kontrakten er fullt signert!';
