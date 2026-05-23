@@ -79,9 +79,18 @@ app.get('/', (req, res) => {
     if (party === 'sara' && !evelynSigned) {
       return `<div class="ct-sig-box"><span class="ct-sig-placeholder">Venter på Evelyns signatur</span></div>`;
     }
-    return `<div class="ct-sig-box ct-sig-box--clickable" onclick="openSigModal('${party}')" role="button" tabindex="0">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-      <span style="font-size:0.82rem;font-weight:600;">Klikk for å signere</span>
+    // Inline draw area — no modal
+    return `<div class="ct-draw-area" id="draw-${party}">
+      <div class="ct-draw-hint" id="hint-${party}">✏️ Tegn signaturen din her</div>
+      <canvas id="canvas-${party}" style="display:block;width:100%;touch-action:none;cursor:crosshair;"></canvas>
+      <div class="ct-draw-actions">
+        <button class="ct-draw-clear" onclick="clearDraw('${party}')">Tøm</button>
+        <span class="ct-draw-err" id="err-${party}"></span>
+        <button class="ct-draw-submit" id="submit-${party}" disabled onclick="submitDraw('${party}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Lagre signatur
+        </button>
+      </div>
     </div>`;
   }
 
@@ -148,116 +157,56 @@ app.get('/', (req, res) => {
   </div>
 </main>
 
-<!-- Signature modal -->
-<div class="modal-overlay" id="sig-modal" style="display:none">
-  <div class="modal-box">
-    <button class="modal-close" onclick="closeModal()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-    <div class="modal-header">
-      <h2>Tegn din signatur</h2>
-      <p class="modal-sub" id="modal-name"></p>
-    </div>
-    <div class="modal-canvas-wrap">
-      <canvas id="sig-canvas"></canvas>
-      <div class="canvas-hint" id="canvas-hint">Tegn signaturen din her</div>
-    </div>
-    <div class="modal-footer" style="margin-top:1rem;">
-      <button class="btn btn-ghost" onclick="clearPad()">Tøm</button>
-      <div style="display:flex;align-items:center;gap:0.75rem;">
-        <div class="spinner" id="sig-spinner"></div>
-        <button class="btn btn-confirm" id="confirm-btn" disabled onclick="submitSig()">Bekreft signatur</button>
-      </div>
-    </div>
-    <div style="font-size:0.78rem;color:var(--muted);margin-top:0.75rem;text-align:center;" id="sig-err"></div>
-  </div>
-</div>
-
-<script src="https://unpkg.com/signature_pad@4/dist/signature_pad.umd.min.js"></script>
+<script src="/signature_pad.min.js"></script>
 <script>
-let pad = null, activeParty = null;
+const pads = {};
 
-function openSigModal(party) {
-  activeParty = party;
-  const names = { evelyn: 'Evelyn Floan', sara: 'Sara Katarina Petru Endestad' };
-  document.getElementById('modal-name').textContent = names[party];
-  document.getElementById('confirm-btn').disabled = true;
-  document.getElementById('sig-err').textContent = '';
-  document.getElementById('sig-spinner').style.display = 'none';
-  document.getElementById('sig-modal').style.display = 'flex';
-  initPad();
-}
-
-function initPad() {
-  const canvas = document.getElementById('sig-canvas');
-  resizeCanvas(canvas);
-  if (pad) {
-    pad.clear();
-    document.getElementById('canvas-hint').style.opacity = '1';
-  } else {
-    pad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#0f1e40', minWidth: 1.5, maxWidth: 3.5 });
-    pad.addEventListener('beginStroke', () => { document.getElementById('canvas-hint').style.opacity = '0'; });
-    pad.addEventListener('endStroke', () => { document.getElementById('confirm-btn').disabled = pad.isEmpty(); });
-    window.addEventListener('resize', () => {
-      const d = pad.toData(); resizeCanvas(canvas); pad.clear();
-      if (d && d.length) pad.fromData(d);
-      document.getElementById('confirm-btn').disabled = pad.isEmpty();
-    });
-  }
-}
-
-function clearPad() {
-  if (pad) pad.clear();
-  document.getElementById('canvas-hint').style.opacity = '1';
-  document.getElementById('confirm-btn').disabled = true;
-}
-
-function closeModal() {
-  document.getElementById('sig-modal').style.display = 'none';
-}
-
-async function submitSig() {
-  const dataUrl = pad.toDataURL('image/png');
-  const btn = document.getElementById('confirm-btn');
-  const spinner = document.getElementById('sig-spinner');
-  const errEl = document.getElementById('sig-err');
-  btn.disabled = true;
-  spinner.style.display = 'inline-block';
-  errEl.textContent = '';
-  try {
-    const res = await fetch('/sign/' + activeParty, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signature_dataurl: dataUrl })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      window.location.href = '/signed/' + activeParty;
-      return;
-    }
-    const msg = data.error === 'evelyn_must_sign_first' ? 'Evelyn må signere før Sara.' :
-                data.error === 'already_signed' ? 'Allerede signert.' : 'Noe gikk galt. Prøv igjen.';
-    errEl.textContent = msg;
-    btn.disabled = false;
-  } catch(e) {
-    errEl.textContent = 'Nettverksfeil. Prøv igjen.';
-    btn.disabled = false;
-  }
-  spinner.style.display = 'none';
-}
-
-document.getElementById('sig-modal').addEventListener('click', e => {
-  if (e.target.id === 'sig-modal') closeModal();
-});
-
-function resizeCanvas(canvas) {
+function initDraw(party) {
+  const canvas = document.getElementById('canvas-' + party);
+  if (!canvas || pads[party]) return;
   const ratio = window.devicePixelRatio || 1;
   const w = canvas.parentElement.clientWidth;
-  const h = Math.max(160, Math.round(w * 0.38));
+  const h = Math.max(130, Math.round(w * 0.35));
   canvas.width = w * ratio; canvas.height = h * ratio;
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.style.height = h + 'px';
   canvas.getContext('2d').scale(ratio, ratio);
+  const p = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#0f1e40', minWidth: 1.5, maxWidth: 3.5 });
+  p.addEventListener('beginStroke', () => { document.getElementById('hint-' + party).style.display = 'none'; });
+  p.addEventListener('endStroke', () => { document.getElementById('submit-' + party).disabled = p.isEmpty(); });
+  pads[party] = p;
 }
+
+function clearDraw(party) {
+  if (pads[party]) { pads[party].clear(); document.getElementById('hint-' + party).style.display = 'flex'; }
+  document.getElementById('submit-' + party).disabled = true;
+}
+
+async function submitDraw(party) {
+  const p = pads[party];
+  if (!p || p.isEmpty()) return;
+  const btn = document.getElementById('submit-' + party);
+  const errEl = document.getElementById('err-' + party);
+  btn.disabled = true; btn.textContent = 'Lagrer…'; errEl.textContent = '';
+  try {
+    const res = await fetch('/sign/' + party, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature_dataurl: p.toDataURL('image/png') })
+    });
+    const data = await res.json();
+    if (data.ok) { window.location.href = '/signed/' + party; return; }
+    errEl.textContent = data.error === 'evelyn_must_sign_first' ? 'Evelyn må signere først.' :
+                        data.error === 'already_signed' ? 'Allerede signert.' : 'Feil. Prøv igjen.';
+    btn.disabled = false; btn.textContent = 'Lagre signatur';
+  } catch(e) { errEl.textContent = 'Nettverksfeil.'; btn.disabled = false; btn.textContent = 'Lagre signatur'; }
+}
+
+// Init canvases when page is ready
+window.addEventListener('DOMContentLoaded', () => {
+  ['evelyn','sara'].forEach(party => {
+    const el = document.getElementById('canvas-' + party);
+    if (el) initDraw(party);
+  });
+});
 </script>
 
 </body>

@@ -160,17 +160,61 @@ body.sign-page { background: var(--page-bg); }
 .ct-sig-img { max-height: 100%; max-width: 100%; object-fit: contain; padding: 4px; }
 .ct-sig-placeholder { font-size: 0.82rem; color: #b0b8c8; font-style: italic; }
 .ct-sig-done { display: flex; align-items: center; gap: 0.4rem; color: var(--green); font-weight: 600; font-size: 0.9rem; }
-.ct-sig-box--clickable {
+/* ── Inline signature draw area ── */
+.ct-draw-area {
+  border: 2px solid var(--blue);
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: 0.75rem;
+  position: relative;
+  overflow: hidden;
+}
+.ct-draw-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: #b0b8c8;
+  pointer-events: none;
+  font-style: italic;
+}
+.ct-draw-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: #fafbfd;
+}
+.ct-draw-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
   cursor: pointer;
-  border-color: var(--blue);
-  border-style: dashed;
-  background: #f0f4fd;
-  flex-direction: column;
-  gap: 0.35rem;
-  color: var(--blue);
+  color: var(--muted);
+}
+.ct-draw-clear:hover { border-color: #aaa; color: var(--text); }
+.ct-draw-err { flex: 1; font-size: 0.78rem; color: var(--red); }
+.ct-draw-submit {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   transition: background 0.15s;
 }
-.ct-sig-box--clickable:hover { background: #e2eaf7; }
+.ct-draw-submit:hover:not(:disabled) { background: var(--blue-light); }
+.ct-draw-submit:disabled { background: #9aabca; cursor: not-allowed; }
 .ct-sig-underline { border-top: 1.5px solid var(--text); margin-bottom: 0.5rem; }
 .ct-sig-name { font-weight: 700; font-size: 0.85rem; margin-bottom: 0.15rem; }
 .ct-sig-company { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.25rem; }
