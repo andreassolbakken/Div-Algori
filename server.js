@@ -84,9 +84,9 @@ app.get('/', (req, res) => {
       <div class="ct-draw-hint" id="hint-${party}">✏️ Tegn signaturen din her</div>
       <canvas id="canvas-${party}" style="display:block;width:100%;touch-action:none;cursor:crosshair;"></canvas>
       <div class="ct-draw-actions">
-        <button class="ct-draw-clear" onclick="clearDraw('${party}')">Tøm</button>
+        <button class="ct-draw-clear" id="clear-${party}">Tøm</button>
         <span class="ct-draw-err" id="err-${party}"></span>
-        <button class="ct-draw-submit" id="submit-${party}" disabled onclick="submitDraw('${party}')">
+        <button class="ct-draw-submit" id="submit-${party}" disabled>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           Lagre signatur
         </button>
@@ -231,6 +231,9 @@ function setupPad(party) {
     isEmpty:   function() { return !hasDrawn; },
     toDataURL: function(t) { return canvas.toDataURL(t||'image/png'); }
   };
+
+  document.getElementById('clear-' + party).addEventListener('click', function() { clearDraw(party); });
+  document.getElementById('submit-' + party).addEventListener('click', function() { submitDraw(party); });
 }
 
 function clearDraw(party) {
