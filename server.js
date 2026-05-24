@@ -54,6 +54,7 @@ function getClientIp(req) {
 
 // ── Home / contract + signing ─────────────────────────────────────────────────
 app.get('/', (req, res) => {
+  const isAdmin = checkAdminToken(req.query.admin);
   const evelynSig  = getSignature('evelyn');
   const saraSig    = getSignature('sara');
   const evelynSigned = hasSigned('evelyn');
@@ -156,6 +157,15 @@ app.get('/', (req, res) => {
     </section>
   </div>
 </main>
+
+${isAdmin ? `
+<div style="position:fixed;bottom:1rem;right:1rem;z-index:200;">
+  <form method="POST" action="/admin/reset?token=${encodeURIComponent(process.env.ADMIN_TOKEN || '')}" onsubmit="return confirm('Tilbakestill begge signaturer?')">
+    <button type="submit" style="background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+      Tilbakestill signaturer
+    </button>
+  </form>
+</div>` : ''}
 
 <script>
 var pads = {};
@@ -388,7 +398,8 @@ app.get('/audit', (req, res) => {
 app.post('/admin/reset', (req, res) => {
   if (!checkAdminToken(req.query.token)) return res.status(404).send('Ikke funnet.');
   resetSignatures();
-  res.json({ ok: true, message: 'Alle signaturer er nullstilt.' });
+  const token = req.query.token;
+  res.redirect(`/?admin=${encodeURIComponent(token)}`);
 });
 
 app.use((req, res) => res.status(404).send('Ikke funnet.'));
